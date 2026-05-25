@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "construction_cost_risk_analysis"
+dynamic = ["version"]
+description = ""
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "Huzaifa Panchi", email = "justforprogamming07@gmail.com"}]
+keywords = ['nbdev']
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/justforprogramming07-code/construction_cost_risk_analysis"
+Documentation = "https://justforprogramming07-code.github.io/construction_cost_risk_analysis/"
+
+[project.entry-points.nbdev]
+construction_cost_risk_analysis = "construction_cost_risk_analysis._modidx:d"
+
+[tool.setuptools.dynamic]
+version = {attr = "construction_cost_risk_analysis.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["construction_cost_risk_analysis"]
+
+[tool.nbdev]

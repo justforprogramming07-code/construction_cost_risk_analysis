@@ -1,0 +1,9 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "construction_cost_risk_analysis"
+  site-url: "https://justforprogramming07-code.github.io/construction_cost_risk_analysis"
+  description: ""
+  repo-branch: main
+  repo-url: "https://github.com/justforprogramming07-code/construction_cost_risk_analysis"
