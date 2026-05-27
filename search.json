@@ -1,0 +1,142 @@
+[
+  {
+    "objectID": "construction_cost_risk_forecasting.html",
+    "href": "construction_cost_risk_forecasting.html",
+    "title": "Construction Cost Risk Forecasting",
+    "section": "",
+    "text": "import pandas as pd\nimport numpy as np\nimport matplotlib.pyplot as plt\nimport warnings\nwarnings.filterwarnings('ignore')\n\nfrom fredapi import Fred\nfrom xgboost import XGBRegressor\nfrom sklearn.model_selection import TimeSeriesSplit, GridSearchCV\nfrom sklearn.metrics import mean_absolute_error, mean_squared_error\n\nplt.style.use('fivethirtyeight')\npd.set_option('display.max_columns', 500)",
+    "crumbs": [
+      "Construction Cost Risk Forecasting"
+    ]
+  },
+  {
+    "objectID": "construction_cost_risk_forecasting.html#imports",
+    "href": "construction_cost_risk_forecasting.html#imports",
+    "title": "Construction Cost Risk Forecasting",
+    "section": "",
+    "text": "import pandas as pd\nimport numpy as np\nimport matplotlib.pyplot as plt\nimport warnings\nwarnings.filterwarnings('ignore')\n\nfrom fredapi import Fred\nfrom xgboost import XGBRegressor\nfrom sklearn.model_selection import TimeSeriesSplit, GridSearchCV\nfrom sklearn.metrics import mean_absolute_error, mean_squared_error\n\nplt.style.use('fivethirtyeight')\npd.set_option('display.max_columns', 500)",
+    "crumbs": [
+      "Construction Cost Risk Forecasting"
+    ]
+  },
+  {
+    "objectID": "construction_cost_risk_forecasting.html#load-raw-data",
+    "href": "construction_cost_risk_forecasting.html#load-raw-data",
+    "title": "Construction Cost Risk Forecasting",
+    "section": "2. load raw data",
+    "text": "2. load raw data\nthree sources: wpi from oea excel, macro indicators from rbi excel, crude oil from fred api.\nall three get merged on the date index at the end of this section.\n\n# --- WPI data from OEA ---\n# the excel from oea has commodities as rows and months as columns\n# we transpose it so that months become rows which is what we need\n\nwpi_file_path = r\"E:\\consultancy model\\data\\raw\\wpi\\wpi_monthly_data.xlsx\"\nwpi = pd.read_excel(wpi_file_path)\n\nwpi.drop(columns=['COMM_WT', 'COMM_CODE'], inplace=True)\nwpi = wpi.set_index('COMM_NAME').T\nwpi.index.name = 'date'\nwpi.columns.name = None\n\n# only keeping the commodities relevant to construction cost\nkeep_names = [\n    \"Ordinary Portland cement\",\n    \"Bitumen\",\n    \"a. Inputs into steel making\",\n    'Electricity', 'LPG', 'Natural Gas', 'Petrol'\n]\n\nwpi.columns = wpi.columns.astype(str).str.strip().str.lower().str.replace(r' ', '_', regex=True)\nkeep_names = [name.strip().lower().replace(' ', '_') for name in keep_names]\nwpi = wpi[keep_names]\nwpi = wpi.apply(pd.to_numeric, errors='coerce')\n\nwpi.index = pd.to_datetime(wpi.index.str.replace('INDX', ''), format='%m%Y').to_period('M')\nwpi = wpi[wpi.index &lt;= '2026-01']\n\nprint(wpi.shape)\nwpi.head()\n\n(166, 7)\n\n\n\n\n\n\n\n\n\nordinary_portland_cement\nbitumen\na._inputs_into_steel_making\nelectricity\nlpg\nnatural_gas\npetrol\n\n\ndate\n\n\n\n\n\n\n\n\n\n\n\n2012-04\n110.6\n102.0\n115.5\n97.4\n111.1\n108.0\n106.2\n\n\n2012-05\n109.1\n103.9\n114.9\n100.8\n106.3\n113.2\n108.6\n\n\n2012-06\n109.2\n106.1\n113.6\n102.5\n101.7\n116.3\n112.1\n\n\n2012-07\n111.3\n106.1\n109.2\n101.8\n97.4\n115.2\n105.7\n\n\n2012-08\n111.2\n105.9\n107.7\n98.5\n91.9\n115.4\n110.6\n\n\n\n\n\n\n\n\n# --- RBI macro data ---\n\nfile_path = r\"E:\\consultancy model\\data\\raw\\rbi\\rbi_table.xlsx\"\nrbi = pd.read_excel(file_path, header=5, index_col=\"date\")\n\nrbi.index = pd.to_datetime(rbi.index).to_period('M')\nrbi = rbi.drop(rbi[rbi.index == '1970-01'].index)  # bad row oea sometimes includes\nrbi = rbi[rbi.index &gt;= '2012-04']\n\ncolumns_to_keep = [\n    '1.2   Index of Industrial Production',\n    '2.2.2 Broad Money (M3)',\n    '4.1 interest rates(%)   Policy Repo Rate',\n    '5.1 5 RBI Reference Rate and Forward Premia,   INR-US$ Spot Rate (Rs. Per Foreign Currency)',\n    '6.1   All India Consumer Price Index'\n]\n\nfor col in rbi.columns.tolist():\n    if col not in columns_to_keep:\n        rbi = rbi.drop(columns=col)\n\nrbi.columns = rbi.columns.astype(str).str.strip().str.lower().str.replace(r' ', '_', regex=True)\nrbi = rbi.apply(pd.to_numeric, errors='coerce')\n\nprint(rbi.shape)\nrbi.head()\n\n(166, 5)\n\n\n\n\n\n\n\n\n\n1.2___index_of_industrial_production\n2.2.2_broad_money_(m3)\n4.1_interest_rates(%)___policy_repo_rate\n5.1_5_rbi_reference_rate_and_forward_premia,___inr-us$_spot_rate_(rs._per_foreign_currency)\n6.1___all_india_consumer_price_index\n\n\ndate\n\n\n\n\n\n\n\n\n\n2026-01\n4.826733\n12.027650\n5.25\n91.8983\n2.734337\n\n\n2025-12\n7.784810\n12.111155\n5.25\n89.8296\n1.166181\n\n\n2025-11\n7.157326\n9.877754\n5.50\n89.4557\n0.492754\n\n\n2025-10\n0.532269\n10.301629\n5.50\n88.7241\n0.254065\n\n\n2025-09\n4.628999\n9.231437\n5.50\n88.7234\n1.441813\n\n\n\n\n\n\n\n\n# --- Crude oil from FRED ---\nfred_client = Fred(api_key='your_api_key')\n\nbrent = fred_client.get_series('DCOILBRENTEU', observation_start='2012-04-01', observation_end='2026-01-31')\nwti = fred_client.get_series('DCOILWTICO', observation_start='2012-04-01', observation_end='2026-01-31')\n\ncrude_df = pd.DataFrame({'brent_crude_usd': brent, 'wti_crude_usd': wti})\ncrude_df.index = pd.to_datetime(crude_df.index).to_period('M')\ncrude_df.index.name = 'date'\n\ncrude_df = crude_df.groupby(crude_df.index).mean()\n\nprint(crude_df.shape)\ncrude_df.head()\n\n(166, 2)\n\n\n\n\n\n\n\n\n\nbrent_crude_usd\nwti_crude_usd\n\n\ndate\n\n\n\n\n\n\n2012-04\n119.421667\n103.321000\n\n\n2012-05\n110.339524\n94.654545\n\n\n2012-06\n95.155714\n82.303333\n\n\n2012-07\n102.618571\n87.895238\n\n\n2012-08\n113.356087\n94.131304\n\n\n\n\n\n\n\n\n# --- merge all three sources ---\nmaster = pd.concat([wpi, rbi, crude_df], axis=1)\nprint(master.shape)\nprint(master.isnull().sum())\nmaster.head()\n\n(166, 14)\nordinary_portland_cement                                                                       0\nbitumen                                                                                        0\na._inputs_into_steel_making                                                                    0\nelectricity                                                                                    0\nlpg                                                                                            0\nnatural_gas                                                                                    0\npetrol                                                                                         0\n1.2___index_of_industrial_production                                                           2\n2.2.2_broad_money_(m3)                                                                         0\n4.1_interest_rates(%)___policy_repo_rate                                                       0\n5.1_5_rbi_reference_rate_and_forward_premia,___inr-us$_spot_rate_(rs._per_foreign_currency)    0\n6.1___all_india_consumer_price_index                                                           0\nbrent_crude_usd                                                                                0\nwti_crude_usd                                                                                  0\ndtype: int64\n\n\n\n\n\n\n\n\n\nordinary_portland_cement\nbitumen\na._inputs_into_steel_making\nelectricity\nlpg\nnatural_gas\npetrol\n1.2___index_of_industrial_production\n2.2.2_broad_money_(m3)\n4.1_interest_rates(%)___policy_repo_rate\n5.1_5_rbi_reference_rate_and_forward_premia,___inr-us$_spot_rate_(rs._per_foreign_currency)\n6.1___all_india_consumer_price_index\nbrent_crude_usd\nwti_crude_usd\n\n\ndate\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n2012-04\n110.6\n102.0\n115.5\n97.4\n111.1\n108.0\n106.2\n-1.263538\n13.269282\n8.0\n52.5193\n10.26\n119.421667\n103.321000\n\n\n2012-05\n109.1\n103.9\n114.9\n100.8\n106.3\n113.2\n108.6\n2.466907\n13.845944\n8.0\n56.4225\n10.36\n110.339524\n94.654545\n\n\n2012-06\n109.2\n106.1\n113.6\n102.5\n101.7\n116.3\n112.1\n-1.983664\n15.823262\n8.0\n56.3090\n9.93\n95.155714\n82.303333\n\n\n2012-07\n111.3\n106.1\n109.2\n101.8\n97.4\n115.2\n105.7\n-0.059809\n13.963623\n8.0\n55.8070\n9.86\n102.618571\n87.895238\n\n\n2012-08\n111.2\n105.9\n107.7\n98.5\n91.9\n115.4\n110.6\n2.044610\n14.093591\n8.0\n55.7215\n10.03\n113.356087\n94.131304",
+    "crumbs": [
+      "Construction Cost Risk Forecasting"
+    ]
+  },
+  {
+    "objectID": "construction_cost_risk_forecasting.html#look-at-the-data",
+    "href": "construction_cost_risk_forecasting.html#look-at-the-data",
+    "title": "Construction Cost Risk Forecasting",
+    "section": "3. look at the data",
+    "text": "3. look at the data\nbefore doing anything with a model it helps to just look at what the data actually looks like.\n\nfig, ax = plt.subplots(figsize=(14, 5))\nmaster['ordinary_portland_cement'].plot(ax=ax)\nax.set_title('opc monthly wpi over time')\nax.set_ylabel('wpi index (2011-12 = 100)')\nax.set_xlabel('date')\nplt.tight_layout()\nplt.show()\n\n\n\n\n\n\n\n\n\n# plotting all features to see how they move\nmaster.plot(subplots=True, figsize=(14, 20), title='all features over time')\nplt.tight_layout()\nplt.show()",
+    "crumbs": [
+      "Construction Cost Risk Forecasting"
+    ]
+  },
+  {
+    "objectID": "construction_cost_risk_forecasting.html#feature-engineering",
+    "href": "construction_cost_risk_forecasting.html#feature-engineering",
+    "title": "Construction Cost Risk Forecasting",
+    "section": "4. feature engineering",
+    "text": "4. feature engineering\nxgboost does not understand time — it just sees numbers in columns. so we have to manually create features that carry time information.\nwhat we are creating: - target: opc wpi shifted by -1 (next month’s value — what we want to predict) - lag 3 of opc: opc value from 3 months ago — gives the model a quarterly memory - outlier flag: binary column marking months where opc was unusually high — handles the 2022 spike\n\ndf = master.copy()\n\n# target: next month's opc value\n# shifting by -1 moves each row's value one position up\n# so row for jan gets feb's value, row for feb gets march's value, etc.\ndf['target'] = df['ordinary_portland_cement'].shift(-1)\n\n# lag 3: opc value from 3 months ago\n# gives the model a sense of where prices were heading into this month\ndf['opc_lag3'] = df['ordinary_portland_cement'].shift(3)\n\n# outlier flag: 1 if this month's opc is more than 2 std devs above the 12-month rolling mean\n# this marks the 2022 spike so the model knows those months were unusual\nrolling_mean = df['ordinary_portland_cement'].rolling(12).mean()\nrolling_std = df['ordinary_portland_cement'].rolling(12).std()\ndf['opc_outlier_flag'] = ((df['ordinary_portland_cement'] - rolling_mean) &gt; 2 * rolling_std).astype(int)\n\n# drop rows with nulls introduced by the shifts and rolling window\ndf = df.dropna().reset_index(drop=True)\n\nprint(df.shape)\nprint(f\"outlier months flagged: {df['opc_outlier_flag'].sum()}\")\n\n(160, 17)\noutlier months flagged: 10",
+    "crumbs": [
+      "Construction Cost Risk Forecasting"
+    ]
+  },
+  {
+    "objectID": "construction_cost_risk_forecasting.html#train-test-split",
+    "href": "construction_cost_risk_forecasting.html#train-test-split",
+    "title": "Construction Cost Risk Forecasting",
+    "section": "5. train test split",
+    "text": "5. train test split\nfor time series data you cannot split randomly — the model would see future data during training which makes evaluation meaningless.\nrule: everything before a cutoff date goes to train, everything after goes to test.\n\nfeature_cols = [col for col in df.columns if col != 'target']\n\nX = df[feature_cols]\ny = df['target']\n\nsplit_idx = int(len(df) * 0.8)\n\nX_train = X.iloc[:split_idx]\nX_test = X.iloc[split_idx:]\ny_train = y.iloc[:split_idx]\ny_test = y.iloc[split_idx:]\n\nprint(f\"train: {X_train.shape}, test: {X_test.shape}\")\n\ntrain: (128, 16), test: (32, 16)",
+    "crumbs": [
+      "Construction Cost Risk Forecasting"
+    ]
+  },
+  {
+    "objectID": "construction_cost_risk_forecasting.html#baseline-model",
+    "href": "construction_cost_risk_forecasting.html#baseline-model",
+    "title": "Construction Cost Risk Forecasting",
+    "section": "6. baseline model",
+    "text": "6. baseline model\nbefore tuning anything, we train a model with default parameters to know where we are starting from.\n\nbaseline_model = XGBRegressor(random_state=42)\nbaseline_model.fit(X_train, y_train)\n\nbaseline_preds = baseline_model.predict(X_test)\n\nbaseline_mae = mean_absolute_error(y_test, baseline_preds)\nbaseline_rmse = np.sqrt(mean_squared_error(y_test, baseline_preds))\n\nprint(f\"baseline MAE : {baseline_mae:.3f}\")\nprint(f\"baseline RMSE: {baseline_rmse:.3f}\")\n\nbaseline MAE : 1.914\nbaseline RMSE: 2.462",
+    "crumbs": [
+      "Construction Cost Risk Forecasting"
+    ]
+  },
+  {
+    "objectID": "construction_cost_risk_forecasting.html#walk-forward-validation",
+    "href": "construction_cost_risk_forecasting.html#walk-forward-validation",
+    "title": "Construction Cost Risk Forecasting",
+    "section": "7. walk forward validation",
+    "text": "7. walk forward validation\ntesting on one chunk of data can be misleading — those months might be unusually easy or hard to predict.\nwalk forward validation splits the training data into multiple folds where each fold trains on more data and tests on the next unseen chunk. this gives a more reliable picture of how the model actually performs.\n\ntscv = TimeSeriesSplit(n_splits=3)\ncv_scores = []\n\nfor fold, (train_idx, val_idx) in enumerate(tscv.split(X_train)):\n    X_tr = X_train.iloc[train_idx]\n    X_val = X_train.iloc[val_idx]\n    y_tr = y_train.iloc[train_idx]\n    y_val = y_train.iloc[val_idx]\n\n    m = XGBRegressor(random_state=42)\n    m.fit(X_tr, y_tr)\n    preds = m.predict(X_val)\n\n    fold_mae = mean_absolute_error(y_val, preds)\n    cv_scores.append(fold_mae)\n    print(f\"fold {fold+1} MAE: {fold_mae:.3f}\")\n\nprint(f\"\\naverage CV MAE: {np.mean(cv_scores):.3f}\")\n\nfold 1 MAE: 2.015\nfold 2 MAE: 6.885\nfold 3 MAE: 7.533\n\naverage CV MAE: 5.478",
+    "crumbs": [
+      "Construction Cost Risk Forecasting"
+    ]
+  },
+  {
+    "objectID": "construction_cost_risk_forecasting.html#hyperparameter-tuning",
+    "href": "construction_cost_risk_forecasting.html#hyperparameter-tuning",
+    "title": "Construction Cost Risk Forecasting",
+    "section": "8. hyperparameter tuning",
+    "text": "8. hyperparameter tuning\ninstead of guessing parameters, we try a grid of values and let the model tell us what works best.\n\nparam_grid = {\n    'n_estimators': [50, 100, 200, 300],\n    'learning_rate': [0.01, 0.05, 0.1, 0.2, 0.3]\n}\n\ngrid_search = GridSearchCV(\n    XGBRegressor(random_state=42),\n    param_grid,\n    cv=tscv,\n    scoring='neg_mean_absolute_error'\n)\n\ngrid_search.fit(X_train, y_train)\n\nprint(f\"best params: {grid_search.best_params_}\")\nprint(f\"best CV MAE: {abs(grid_search.best_score_):.3f}\")\n\nbest params: {'learning_rate': 0.3, 'n_estimators': 100}\nbest CV MAE: 5.478",
+    "crumbs": [
+      "Construction Cost Risk Forecasting"
+    ]
+  },
+  {
+    "objectID": "construction_cost_risk_forecasting.html#final-model",
+    "href": "construction_cost_risk_forecasting.html#final-model",
+    "title": "Construction Cost Risk Forecasting",
+    "section": "9. final model",
+    "text": "9. final model\nretrain with the best parameters and compare to baseline.\n\nbest_params = grid_search.best_params_\n\nfinal_model = XGBRegressor(**best_params, random_state=42)\nfinal_model.fit(X_train, y_train)\n\nfinal_preds = final_model.predict(X_test)\n\nfinal_mae = mean_absolute_error(y_test, final_preds)\nfinal_rmse = np.sqrt(mean_squared_error(y_test, final_preds))\n\nprint(f\"baseline  — MAE: {baseline_mae:.3f}  RMSE: {baseline_rmse:.3f}\")\nprint(f\"tuned     — MAE: {final_mae:.3f}  RMSE: {final_rmse:.3f}\")\n\nbaseline  — MAE: 1.914  RMSE: 2.462\ntuned     — MAE: 1.914  RMSE: 2.462\n\n\n\n# actual vs predicted on the test period\nfig, ax = plt.subplots(figsize=(14, 5))\nax.plot(y_test.values, label='actual', linewidth=2)\nax.plot(final_preds, label='predicted', linestyle='--')\nax.set_title('actual vs predicted — test period')\nax.set_ylabel('opc wpi')\nax.set_xlabel('months')\nax.legend()\nplt.tight_layout()\nplt.show()",
+    "crumbs": [
+      "Construction Cost Risk Forecasting"
+    ]
+  },
+  {
+    "objectID": "construction_cost_risk_forecasting.html#what-is-the-model-actually-using",
+    "href": "construction_cost_risk_forecasting.html#what-is-the-model-actually-using",
+    "title": "Construction Cost Risk Forecasting",
+    "section": "10. what is the model actually using",
+    "text": "10. what is the model actually using\nfeature importance tells us which variables the model relied on most. useful for understanding whether the model is learning sensible relationships.\n\nimportance = pd.Series(final_model.feature_importances_, index=X.columns)\nimportance = importance.sort_values(ascending=False)\n\nfig, ax = plt.subplots(figsize=(10, 6))\nimportance.head(10).plot(kind='barh', ax=ax)\nax.set_title('top 10 features by importance')\nax.set_xlabel('importance score')\nax.invert_yaxis()\nplt.tight_layout()\nplt.show()\n\nprint(importance.head(10))\n\n\n\n\n\n\n\n\nordinary_portland_cement                                                                       0.759648\nbrent_crude_usd                                                                                0.150116\nlpg                                                                                            0.017322\n6.1___all_india_consumer_price_index                                                           0.014266\n4.1_interest_rates(%)___policy_repo_rate                                                       0.014147\npetrol                                                                                         0.011533\n5.1_5_rbi_reference_rate_and_forward_premia,___inr-us$_spot_rate_(rs._per_foreign_currency)    0.007051\na._inputs_into_steel_making                                                                    0.006551\n1.2___index_of_industrial_production                                                           0.005312\nelectricity                                                                                    0.003959\ndtype: float32",
+    "crumbs": [
+      "Construction Cost Risk Forecasting"
+    ]
+  },
+  {
+    "objectID": "construction_cost_risk_forecasting.html#predict-next-month",
+    "href": "construction_cost_risk_forecasting.html#predict-next-month",
+    "title": "Construction Cost Risk Forecasting",
+    "section": "11. predict next month",
+    "text": "11. predict next month\nthe last row of the dataset represents january 2026. feeding it to the model gives us the predicted opc wpi for february 2026.\n\nlast_row = X.tail(1)\nfeb_prediction = final_model.predict(last_row)\n\nprint(f\"predicted OPC WPI for february 2026: {feb_prediction[0]:.2f}\")\nprint(f\"model test MAE: ±{final_mae:.2f} index points\")\nprint(f\"so the likely range is: {feb_prediction[0] - final_mae:.2f} to {feb_prediction[0] + final_mae:.2f}\")\n\npredicted OPC WPI for february 2026: 124.73\nmodel test MAE: ±1.91 index points\nso the likely range is: 122.81 to 126.64",
+    "crumbs": [
+      "Construction Cost Risk Forecasting"
+    ]
+  },
+  {
+    "objectID": "construction_cost_risk_forecasting.html#what-this-means-for-cost-overrun-estimation",
+    "href": "construction_cost_risk_forecasting.html#what-this-means-for-cost-overrun-estimation",
+    "title": "Construction Cost Risk Forecasting",
+    "section": "12. what this means for cost overrun estimation",
+    "text": "12. what this means for cost overrun estimation\nthe prediction above is for one month ahead. for a contractor bidding on a 2-4 year project, the more useful number is the expected escalation over the project duration.\na simple way to estimate that: take the current opc wpi, apply the historical average annual growth rate, and build a range around it using the model’s MAE as the uncertainty band.\nthis is not a perfect forecast. it is a defensible, data-driven estimate — which is more than most cost escalation approaches currently used in indian infrastructure contracting.\n\n# escalation table: what does historical data suggest for 1, 2, 3, 4 year horizons\ncurrent_opc = df['ordinary_portland_cement'].iloc[-1]\n\n# annual growth rate from the full dataset\nannual_growth = df['ordinary_portland_cement'].pct_change(12).mean()\n\nprint(f\"current OPC WPI (jan 2026): {current_opc:.2f}\")\nprint(f\"historical avg annual growth: {annual_growth*100:.2f}%\")\nprint()\nprint(f\"{'horizon':&lt;15} {'base estimate':&lt;20} {'low estimate':&lt;20} {'high estimate'}\")\nprint(\"-\" * 65)\n\nfor years in [1, 2, 3, 4]:\n    base = current_opc * ((1 + annual_growth) ** years)\n    low = base * 0.93   # ~7% downside buffer\n    high = base * 1.07  # ~7% upside buffer\n    escalation_pct = ((base - current_opc) / current_opc) * 100\n    print(f\"{str(years) + ' year':&lt;15} {base:.1f} (+{escalation_pct:.1f}%){'':&gt;5} {low:.1f}{'':&gt;10} {high:.1f}\")\n\ncurrent OPC WPI (jan 2026): 127.50\nhistorical avg annual growth: 1.71%\n\nhorizon         base estimate        low estimate         high estimate\n-----------------------------------------------------------------\n1 year          129.7 (+1.7%)      120.6           138.8\n2 year          131.9 (+3.5%)      122.7           141.1\n3 year          134.2 (+5.2%)      124.8           143.5\n4 year          136.5 (+7.0%)      126.9           146.0",
+    "crumbs": [
+      "Construction Cost Risk Forecasting"
+    ]
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "core",
+    "section": "",
+    "text": "# Construction Cost Risk Analysis\nWelcome to the documentation for this project.\n\n\nsource\n\nfoo\n\ndef foo(\n    \n):\n\nCall self as a function.",
+    "crumbs": [
+      "core"
+    ]
+  }
+]
