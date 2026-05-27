@@ -2,4 +2,4 @@ website:
   sidebar:
     contents:
       - index.ipynb
-      - 00_construction_cost_risk_forecasting_two.ipynb
+      - 00_construction_cost_risk_forecasting.ipynb
